@@ -58,7 +58,7 @@ def main():
             # The control mode is "arm_pd_ee_delta_pose_align_interpolate_by_planner_gripper_pd_joint_target_delta_pos_interpolate_by_planner"
             # This means the gripper action is a delta for the target joint position.
             action = np.random.uniform(low=-0.1, high=0.1, size=7).astype(np.float32) # Arm delta
-            action[6] = np.random.uniform(low=-0.01, high=0.01).astype(np.float32) # Gripper delta
+            action[6] = np.random.uniform(low=-0.01, high=0.01) # Gripper delta
 
             print(f"\nStep {i+1}/{num_steps}, Action: {action}")
             # The environment step typically returns: obs, reward, terminated, truncated, info
