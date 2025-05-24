@@ -28,6 +28,7 @@ ENVIRONMENTS = [
     "widowx_carrot_on_plate",
     "widowx_stack_cube",
     "widowx_put_eggplant_in_basket",
+    "google_robot_spoon_on_towel",
 ]
 
 ENVIRONMENT_MAP = {
@@ -68,6 +69,7 @@ ENVIRONMENT_MAP = {
     "widowx_carrot_on_plate": ("PutCarrotOnPlateInScene-v0", {}),
     "widowx_stack_cube": ("StackGreenCubeOnYellowCubeBakedTexInScene-v0", {}),
     "widowx_put_eggplant_in_basket": ("PutEggplantInBasketScene-v0", {}),
+    "google_robot_spoon_on_towel": ("GoogleRobotPutSpoonOnTableClothInScene-v0", {}),
 }
 
 

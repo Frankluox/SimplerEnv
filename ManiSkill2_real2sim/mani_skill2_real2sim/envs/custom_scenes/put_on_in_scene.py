@@ -486,3 +486,128 @@ class PutEggplantInBasketScene(PutOnBridgeInSceneEnv):
             scale=5,
             shadow_map_size=2048,
         )
+
+
+@register_env("GoogleRobotPutSpoonOnTableClothInScene-v0", max_episode_steps=60)
+class GoogleRobotPutSpoonOnTableClothInScene(PutSpoonOnTableClothInScene):
+    def __init__(self, **kwargs):
+        # Define new placement configurations for the Google Robot
+        # The Google robot might be larger and have a different workspace.
+        # Original xy_center for WidowX was np.array([-0.16, 0.00])
+        # Let's try placing objects further in front of the Google robot.
+        # Assuming robot's initial xy is [0.0, 0.0] and it faces positive X.
+        # A new center like [0.5, 0.0] might be a starting point.
+        # We also need to ensure the robot itself is placed appropriately via _additional_prepackaged_config_reset
+        
+        google_robot_xy_center = np.array([0.5, 0.0])  # New center for object placements
+        half_edge_length_x = 0.075  # Keep original spread for now
+        half_edge_length_y = 0.075  # Keep original spread for now
+        
+        grid_pos = np.array([[0, 0], [0, 1], [1, 0], [1, 1]]) * 2 - 1
+        grid_pos = (
+            grid_pos * np.array([half_edge_length_x, half_edge_length_y])[None]
+            + google_robot_xy_center[None]
+        )
+
+        xy_configs = []
+        for i, grid_pos_1 in enumerate(grid_pos):
+            for j, grid_pos_2 in enumerate(grid_pos):
+                if i != j:
+                    xy_configs.append(np.array([grid_pos_1, grid_pos_2]))
+
+        # Keep original quat_configs for now
+        # quat_configs = [
+        #     np.array([[1, 0, 0, 0], [1, 0, 0, 0]]),
+        #     np.array([euler2quat(0, 0, np.pi / 2), [1, 0, 0, 0]]),
+        # ]
+        # The superclass PutSpoonOnTableClothInScene will set up its own quat_configs.
+        # We only need to pass the xy_configs that are different.
+        # The source_obj_name and target_obj_name are inherited from PutSpoonOnTableClothInScene.
+
+        # Call the __init__ of PutSpoonOnTableClothInScene, but override xy_configs
+        # We need to pass all relevant args it expects if we are calling its __init__ directly
+        # The parent class PutSpoonOnTableClothInScene calls PutOnBridgeInSceneEnv's init.
+        # Let's pass xy_configs to the grandparent's init.
+        # PutSpoonOnTableClothInScene.__init__ calls super().__init__ which is PutOnBridgeInSceneEnv
+        # So we can call super() which will be PutSpoonOnTableClothInScene's init,
+        # and it will use its own source/target_obj_name, its own quat_configs,
+        # but we want to override its xy_configs.
+        # This requires careful handling of how kwargs are passed.
+
+        # The __init__ chain is:
+        # GoogleRobotPutSpoonOnTableClothInScene -> PutSpoonOnTableClothInScene -> PutOnBridgeInSceneEnv -> PutOnInSceneEnv -> MoveNearInSceneEnv -> CustomBridgeObjectsInSceneEnv -> CustomOtherObjectsInSceneEnv -> CustomSceneEnv -> BaseEnv
+        # PutSpoonOnTableClothInScene's __init__ defines xy_configs and quat_configs then calls super() (PutOnBridgeInSceneEnv)
+        # with source_obj_name, target_obj_name, xy_configs, quat_configs.
+        # So, we should call the grandparent's init (PutOnBridgeInSceneEnv) directly here,
+        # providing the spoon/towel names and our new xy_configs.
+
+        current_source_obj_name = "bridge_spoon_generated_modified"
+        current_target_obj_name = "table_cloth_generated_shorter"
+        current_quat_configs = [
+            np.array([[1, 0, 0, 0], [1, 0, 0, 0]]),
+            np.array([euler2quat(0, 0, np.pi / 2), [1, 0, 0, 0]]),
+        ]
+
+        super(PutSpoonOnTableClothInScene, self).__init__(
+            source_obj_name=current_source_obj_name,
+            target_obj_name=current_target_obj_name,
+            xy_configs=xy_configs, # Our new xy_configs
+            quat_configs=current_quat_configs, # Re-specify parent's quat_configs
+            **kwargs
+        )
+
+    def _setup_prepackaged_env_init_config(self):
+        ret = super()._setup_prepackaged_env_init_config()
+        ret["robot"] = "google_robot_static"
+        ret["control_mode"] = "arm_pd_ee_delta_pose_align_interpolate_by_planner_gripper_pd_joint_target_delta_pos_interpolate_by_planner"
+        # Remove or update overlay configs if they are WidowX specific
+        if "rgb_overlay_path" in ret:
+            del ret["rgb_overlay_path"]
+        if "rgb_overlay_cameras" in ret:
+            del ret["rgb_overlay_cameras"]
+        # TODO: Update camera_cfgs if necessary for google_robot_static
+        # Refer to other google robot envs for camera_cfgs if needed.
+        # For now, we keep the original camera_cfgs from PutSpoonOnTableClothInScene
+        
+        # The scene_name is bridge_table_1_v1 by default from PutOnBridgeInSceneEnv.
+        # This might need to be changed if the table is not suitable for the Google Robot.
+        # For now, assume the table is usable.
+        # If not, we'd need a new scene_name and potentially new scene_offset etc.
+        # e.g. ret["scene_name"] = "google_pick_coke_can_1_v4" # (this is a default google robot scene)
+        # However, the task is spoon on *towel*, implying a table setup.
+        # Let's keep "bridge_table_1_v1" for now.
+        return ret
+
+    def _additional_prepackaged_config_reset(self, options):
+        # Using a specific initial pose for the Google Robot for this task.
+        # The default in CustomSceneEnv for google_robot is random or [0.3-0.4, 0.0-0.2]
+        # We set it to [0.0, 0.0] in the previous subtask.
+        # This should be evaluated in conjunction with xy_center for objects.
+        # If objects are at xy_center=[0.5, 0.0], robot at [0.0, 0.0] should work.
+        options["robot_init_options"] = {
+            "init_xy": [0.0, 0.0], # Consistent with previous subtask
+            "init_rot_quat": [0, 0, 0, 1], # Facing positive X
+        }
+        return False
+
+    def get_language_instruction(self, **kwargs):
+        return "put the spoon on the towel with Google Robot" # Optional: Modify instruction
+
+    # It might be necessary to override _load_model if different model_scales
+    # are needed for the Google Robot. For example:
+    # def _load_model(self):
+    #     # Example: Make objects 20% larger for Google Robot
+    #     # This assumes self.episode_model_ids is already set.
+    #     # This is usually called from reset() -> _set_model() -> _load_model()
+    #     # A cleaner way is to pass model_scales in reset options or set default
+    #     # model_scales in __init__.
+    #
+    #     # If we want to set default scales for this env:
+    #     # In __init__, after super call:
+    #     # self.default_model_scales = {"bridge_spoon_generated_modified": 1.2, "table_cloth_generated_shorter": 1.2}
+    #     # Then in reset() or _set_model(), ensure these are used if no scales are in options.
+    #     # However, the current BaseEnv logic already tries to load "scale" from model_db.
+    #     # If that's not flexible enough, an override of _set_model might be best.
+    #
+    #     # For now, no scale changes are made. The assets will use their default scales.
+    #     super()._load_model()
