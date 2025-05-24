@@ -9,6 +9,9 @@ from transforms3d.quaternions import quat2mat
 from mani_skill2_real2sim.utils.common import random_choice
 from mani_skill2_real2sim.utils.registration import register_env
 from mani_skill2_real2sim import ASSET_DIR
+from mani_skill2_real2sim.sensors.camera import CameraConfig
+from mani_skill2_real2sim.utils.sapien_utils import look_at
+
 
 from .base_env import CustomBridgeObjectsInSceneEnv
 from .move_near_in_scene import MoveNearInSceneEnv
@@ -555,6 +558,55 @@ class GoogleRobotPutSpoonOnTableClothInScene(PutSpoonOnTableClothInScene):
             quat_configs=current_quat_configs, # Re-specify parent's quat_configs
             **kwargs
         )
+        # Store the xy_center for camera setup
+        self.google_robot_xy_center = google_robot_xy_center
+
+    def _setup_cameras(self):
+        super()._setup_cameras()
+        # Remove existing 'overhead_camera' if it's from the agent's head
+        self._camera_configs = [c for c in self._camera_configs if c.uid != "overhead_camera"]
+
+        # Add a new scene-fixed overhead camera
+        # Objects are centered around self.google_robot_xy_center (e.g. [0.5, 0.0])
+        # Table height is self.scene_table_height (e.g. 0.87)
+        cam_x = self.google_robot_xy_center[0]
+        cam_y = self.google_robot_xy_center[1]
+        
+        # Adjust camera y position slightly to capture more of the robot if it's at [0,0] and objects at [0.5,0]
+        # A small offset in Y might be better than strictly 0.0 if table is wide.
+        # Let's assume Y=0 is fine for now, looking directly along the X axis center.
+        
+        # Position the camera above the interaction center, looking down.
+        default_table_height = 0.87 # Use hardcoded default
+        camera_pos = np.array([cam_x, cam_y, default_table_height + 1.0]) # 1.0m above table
+        target_pos = np.array([cam_x, cam_y, default_table_height])
+        
+        # Use look_at to get position and orientation
+        # look_at(eye, target, up) -> returns a Pose (p, q)
+        # We need to be careful: look_at might return a sapien.Pose
+        # CameraConfig expects p and q separately.
+        pose = look_at(eye=camera_pos, target=target_pos, up_dir=np.array([0, 1, 0])) # Up direction along Y for a camera looking down Z in world frame
+
+        # The default Google Robot camera is 640x512.
+        # Default FOV for pinhole camera in SAPIEN is often around 1.0 radians (approx 57 degrees)
+        # Let's use a slightly wider FOV for better overview: np.pi / 2.5 (72 degrees)
+        new_overhead_camera_config = CameraConfig(
+            uid="overhead_camera", # This UID will be picked by get_image_from_maniskill2_obs_dict
+            p=pose.p,
+            q=pose.q,
+            width=640,
+            height=512,
+            fov=np.pi / 2.0, # 90 degrees FOV
+            near=0.01,
+            far=10,
+            actor_uid=None, # Scene-fixed, not attached to an actor
+            hide_link_actor_uids=[], # Default, can be used to hide robot links if needed
+            add_segmentation=True # Default behavior
+        )
+        self._camera_configs.append(new_overhead_camera_config)
+        
+        # Optional: Adjust third_person_camera if it also has issues.
+        # For now, focusing on overhead_camera as it's more critical for task view.
 
     def _setup_prepackaged_env_init_config(self):
         ret = super()._setup_prepackaged_env_init_config()
